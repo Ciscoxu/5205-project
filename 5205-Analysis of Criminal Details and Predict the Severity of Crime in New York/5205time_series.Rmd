@@ -1,0 +1,137 @@
+---
+title: "5205project"
+output: html_document
+date: "2024-04-19"
+---
+clean data
+```{r}
+library(dplyr)
+library(lubridate)
+library(tidyverse)
+data <- read.csv("/Users/shuhuayu/Downloads/NYPD_Complaint_Data_Historic_20240413.csv")
+data1 <- subset(data, select = -c(LOC_OF_OCCUR_DESC,PARKS_NM,HADEVELOPT,HOUSING_PSA,SUSP_AGE_GROUP,SUSP_RACE,SUSP_SEX,STATION_NAME,VIC_AGE_GROUP,VIC_RACE,CMPLNT_NUM, CMPLNT_TO_DT, CMPLNT_TO_TM, ADDR_PCT_CD, KY_CD, PD_CD, JURISDICTION_CODE, X_COORD_CD, Y_COORD_CD, TRANSIT_DISTRICT, Latitude, Longitude,JURIS_DESC) )
+contains_unwanted <- function(x) {
+  grepl("(null)|UNKNOWN", x, ignore.case = TRUE)
+}
+crimedata <- data1 %>%
+  filter_all(all_vars(!contains_unwanted(.)))
+
+crimedata <- drop_na(crimedata)
+crimedata <- crimedata %>%
+  mutate(CMPLNT_FR_DT = mdy(CMPLNT_FR_DT)) %>%
+  filter(year(CMPLNT_FR_DT) >= 2017 & year(CMPLNT_FR_DT) <= 2023)
+```
+
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(stringr)
+
+# Preprocess the PD_DESC column: convert to lowercase and remove special characters
+crimedata$PD_DESC_CLEANED <- tolower(crimedata$PD_DESC)
+crimedata$PD_DESC_CLEANED <- str_replace_all(crimedata$PD_DESC_CLEANED, "[^a-z\\s]", "")
+
+# Count frequencies of different descriptions
+description_counts <- crimedata %>%
+  filter(!is.na(PD_DESC_CLEANED)) %>%
+  count(PD_DESC_CLEANED, sort = TRUE) %>%
+  top_n(10, n)  # Get the top 10 most frequent descriptions
+
+# Plot the data
+ggplot(description_counts, aes(x = reorder(PD_DESC_CLEANED, n), y = n, fill = PD_DESC_CLEANED)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Top 10 Most Common Police Descriptions",
+       x = "Police Description",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+# Display the plot
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(lubridate)
+
+# Assuming the date might have multiple potential formats, you can specify several to try
+crimedata$DATE <- parse_date_time(crimedata$CMPLNT_FR_DT, orders = c("mdy", "dmy", "ymd"))
+
+# Proceed with extracting month and year
+crimedata <- crimedata %>%
+  mutate(
+    MONTH = month(DATE, label = TRUE, abbr = TRUE),  # Get abbreviated month name
+    YEAR = year(DATE)
+  )
+
+# Aggregate data by Month, Year, and Borough
+aggregated_data <- crimedata %>%
+  group_by(YEAR, MONTH, BORO_NM) %>%
+  count(PD_DESC_CLEANED, name = "Count") %>%
+  arrange(YEAR, MONTH, desc(Count))
+
+# Plotting the data
+ggplot(aggregated_data, aes(x = MONTH, y = Count, fill = BORO_NM)) +
+  geom_col(position = position_dodge()) +
+  facet_wrap(~ YEAR, scales = "free_y") +
+  labs(title = "Monthly Police Descriptions by Borough and Year",
+       x = "Month",
+       y = "Frequency of Descriptions") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text.x = element_text(size = 8))
+
+
+
+```
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(lubridate)
+
+# Convert CMPLNT_FR_TM to categorized time periods
+crimedata$TIME_PERIOD <- case_when(
+  str_sub(crimedata$CMPLNT_FR_TM, 1, 2) %in% c("00", "01", "02", "03", "04", "05") ~ "Early Morning",
+  str_sub(crimedata$CMPLNT_FR_TM, 1, 2) %in% c("06", "07", "08", "09", "10", "11") ~ "Morning",
+  str_sub(crimedata$CMPLNT_FR_TM, 1, 2) %in% c("12", "13", "14", "15", "16") ~ "Afternoon",
+  str_sub(crimedata$CMPLNT_FR_TM, 1, 2) %in% c("17", "18", "19", "20", "21") ~ "Evening",
+  TRUE ~ "Night"
+)
+
+# Aggregate data by Borough and Time Period
+aggregated_data <- crimedata %>%
+  group_by(BORO_NM, TIME_PERIOD) %>%
+  count(PD_DESC_CLEANED, name = "Count") %>%
+  arrange(BORO_NM, desc(Count))
+
+# Separate plots for each borough
+boroughs <- unique(aggregated_data$BORO_NM)
+
+plot_list <- lapply(boroughs, function(borough) {
+  borough_data <- filter(aggregated_data, BORO_NM == borough)
+  
+  ggplot(borough_data, aes(x = TIME_PERIOD, y = Count, fill = TIME_PERIOD)) +
+    geom_col() +
+    labs(title = paste("Police Descriptions by Time Period for", borough),
+         x = "Time Period",
+         y = "Frequency of Descriptions") +
+    scale_fill_brewer(palette = "Paired") +  # Use a color palette for clarity
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+})
+
+# Display the plots 
+plot_list
+
+
+
+
+```
+
